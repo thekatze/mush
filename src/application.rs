@@ -1,37 +1,63 @@
-use std::sync::Arc;
-
-use crate::graphics::wgpu::WgpuGraphics;
+use crate::plugins::{
+    rendering::{init_render_schedule, Camera},
+    sprites::SpritePlugin,
+    Plugin,
+};
 use crate::timestep_scheduler::TimestepScheduler;
-use bevy_ecs::{schedule::Schedule, world::World};
+use bevy_ecs::{
+    event::Event,
+    schedule::{Schedule, ScheduleLabel},
+    world::World,
+};
 
-use wgpu::CommandEncoder;
 use winit::{
     event_loop::{self, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 
-use crate::{
-    resources::{Delta, RenderContext},
-    timestep_scheduler::FixedUpdateScheduler,
-};
+use crate::{resources::Delta, timestep_scheduler::FixedUpdateScheduler};
 
 pub struct Application {
     world: World,
-    graphics: WgpuGraphics,
     // window has to be after wgpu, because it has unsafe references onto the window
     window: Window,
     event_loop: EventLoop<()>,
 }
+
+#[derive(Event)]
+pub struct ResizeEvent(pub winit::dpi::PhysicalSize<u32>);
+
+#[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
+struct UpdateSchedule;
+
+#[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
+struct RenderSchedule;
 
 impl Application {
     pub async fn build() -> Result<Self, anyhow::Error> {
         let event_loop = event_loop::EventLoop::new()?;
         let window = WindowBuilder::new().build(&event_loop)?;
 
+        let mut world = World::new();
+
+        let mut update_schedule = Schedule::new(UpdateSchedule);
+        world.add_schedule(update_schedule);
+
+        let mut render_schedule = Schedule::new(RenderSchedule);
+        init_render_schedule(&mut world, &window, &mut render_schedule).await?;
+
+        SpritePlugin {}.build(&mut world, &mut render_schedule);
+
+        world.add_schedule(render_schedule);
+
+        world.spawn(Camera {
+            output: None,
+            view: None,
+        });
+
         Ok(Self {
-            world: World::new(),
-            graphics: WgpuGraphics::build_for_window(&window).await?,
+            world,
             window,
             event_loop,
         })
@@ -42,11 +68,6 @@ impl Application {
 
         use winit::event::Event;
         use winit::event::WindowEvent;
-
-        let mut update_schedule = Schedule::default();
-
-        let mut render_schedule = Schedule::default();
-        render_schedule.add_systems(crate::systems::clear_screen_system::clear_screen_system);
 
         self.window.set_title("Made with Unity(TM)");
 
@@ -65,43 +86,13 @@ impl Application {
                     WindowEvent::RedrawRequested => {
                         scheduler.update(|delta| {
                             self.world.insert_resource(Delta(delta));
-                            update_schedule.run(&mut self.world);
+                            self.world.run_schedule(UpdateSchedule);
                         });
 
                         self.world.remove_resource::<Delta>();
 
                         scheduler.render(|| {
-                            let (tx, rx) = std::sync::mpsc::channel::<CommandEncoder>();
-
-                            let output = self
-                                .graphics
-                                .surface
-                                .get_current_texture()
-                                .expect("cant get surface to draw on");
-
-                            {
-                                let view = Arc::new(
-                                    output
-                                        .texture
-                                        .create_view(&wgpu::TextureViewDescriptor::default()),
-                                );
-
-                                let context = RenderContext {
-                                    device: std::sync::Arc::clone(&self.graphics.device),
-                                    view: view.clone(),
-                                    tx,
-                                };
-
-                                self.world.insert_resource(context);
-
-                                render_schedule.run(&mut self.world);
-                            }
-
-                            self.graphics
-                                .queue
-                                .submit(rx.try_iter().map(|x| x.finish()));
-
-                            output.present();
+                            self.world.run_schedule(RenderSchedule);
                         });
                     }
                     WindowEvent::CloseRequested => {
@@ -116,9 +107,9 @@ impl Application {
                             window.exit();
                         }
                     }
-                    // TODO: handle scale factor changed event
+                    // TODO: maybe handle scale factor changed event
                     WindowEvent::Resized(size) => {
-                        self.graphics.resize(size);
+                        self.world.send_event(ResizeEvent(size));
                     }
                     _ => (),
                 },
