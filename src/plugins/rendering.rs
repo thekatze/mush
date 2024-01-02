@@ -1,7 +1,9 @@
 use bevy_ecs::{
     component::Component,
     event::{Event, EventReader, Events},
-    schedule::{IntoSystemConfigs as _, IntoSystemSetConfigs as _, Schedule, SystemSet},
+    schedule::{
+        IntoSystemConfigs as _, IntoSystemSetConfigs as _, Schedule, SystemSet,
+    },
     system::{Query, Res, ResMut, Resource},
     world::World,
 };
