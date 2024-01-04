@@ -1,3 +1,7 @@
+struct CameraUniform {
+    projection: mat4x4<f32>,
+}
+
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -8,11 +12,14 @@ struct VertexInput {
     @location(1) uv: vec2<f32>,
 }
 
+@group(1) @binding(0)
+var<uniform> camera: CameraUniform;
+
 @vertex
 fn vertex_main(vertex: VertexInput) -> VertexOutput {
     var output: VertexOutput;
 
-    output.clip_position = vec4<f32>(vertex.position, 1.0);
+    output.clip_position = camera.projection * vec4<f32>(vertex.position, 1.0);
     output.uv = vertex.uv;
 
     return output;

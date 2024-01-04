@@ -52,8 +52,18 @@ impl Application {
         world.add_schedule(render_schedule);
 
         world.spawn(Camera {
+            aspect: window.inner_size().width as f32 / window.inner_size().height as f32,
+            eye: (0.0, 0.0, 2.0).into(),
+            direction: glam::Vec3::NEG_Z,
+            fov: 90.0,
+            clip_near: 0.1,
+            clip_far: 100.0,
+
             output: None,
             view: None,
+            projection: glam::Mat4::IDENTITY,
+            uniform: None,
+            bind_group: None,
         });
 
         Ok(Self {

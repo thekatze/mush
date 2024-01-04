@@ -4,7 +4,7 @@ use bevy_ecs::{
     system::{Query, Res, Resource},
 };
 use image::GenericImageView;
-use wgpu::{include_wgsl, util::RenderEncoder};
+use wgpu::include_wgsl;
 
 use super::{
     rendering::{
@@ -78,9 +78,13 @@ impl Plugin for SpritePlugin {
             });
 
         let shader = device.create_shader_module(include_wgsl!("sprite.wgsl"));
+        let camera_bind_group_layout = &world
+            .resource::<super::rendering::CameraBindGroupLayout>()
+            .0;
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Sprite Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout],
+            bind_group_layouts: &[&texture_bind_group_layout, camera_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -248,6 +252,7 @@ pub fn draw_sprites_system(
         render_pass.set_pipeline(&sprite_plugin_context.pipeline);
         render_pass.set_vertex_buffer(0, sprite_plugin_context.vertex_buffer.slice(..));
         render_pass.set_bind_group(0, &sprite_plugin_context.bind_group, &[]);
+        render_pass.set_bind_group(1, camera.bind_group.as_ref().unwrap(), &[]);
         render_pass.draw(0..4, 0..1);
     }
 
